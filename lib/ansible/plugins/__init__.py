@@ -162,7 +162,7 @@ class PluginLoader:
             self.package_path = os.path.dirname(m.__file__)
         return self._all_directories(self.package_path)
 
-    def _get_paths(self):
+    def _get_paths(self, subdirs=True):
         ''' Return a list of paths to search for plugins in '''
 
         if self._paths is not None:
@@ -174,16 +174,11 @@ class PluginLoader:
         if self.config is not None:
             for path in self.config:
                 path = os.path.realpath(os.path.expanduser(path))
-                contents = []
-                # FIXME: arbitrary 10 deep here, should probably walk() to find files
-                #        instead so we don't run into future problems.
-                # Also, for non-module_utils files we wanted to artificially restrict this.
-                # Need to make a policy decision about that.
-                for i in range(1, 10):
-                    contents += glob.glob("%s/%s" % (path, '/*' * i))
-                for c in contents:
-                    if os.path.isdir(c) and c not in ret:
-                        ret.append(c)
+                if subdirs:
+                    contents = glob.glob("%s/*" % path) + glob.glob("%s/*/*" % path)
+                    for c in contents:
+                        if os.path.isdir(c) and c not in ret:
+                            ret.append(c)
                 if path not in ret:
                     ret.append(path)
 

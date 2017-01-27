@@ -470,7 +470,7 @@ def recursive_finder(name, data, py_module_names, py_module_cache, zf):
     # Exclude paths that match with paths we've already processed
     # (Have to exclude them a second time once the paths are processed)
 
-    snippet_paths = [p for p in module_utils_loader._get_paths() if os.path.isdir(p)] 
+    snippet_paths = [p for p in module_utils_loader._get_paths(subdirs=False) if os.path.isdir(p)]
     snippet_paths.append(_SNIPPET_PATH)
     for py_module_name in finder.submodules.difference(py_module_names):
         module_info = None

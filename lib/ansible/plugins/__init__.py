@@ -31,6 +31,7 @@ import warnings
 from collections import defaultdict
 
 from ansible import constants as C
+from ansible.compat.six import string_types
 from ansible.module_utils._text import to_text
 
 
@@ -173,7 +174,13 @@ class PluginLoader:
         if self.config is not None:
             for path in self.config:
                 path = os.path.realpath(os.path.expanduser(path))
-                contents = glob.glob("%s/*" % path) + glob.glob("%s/*/*" % path)
+                contents = []
+                # FIXME: arbitrary 10 deep here, should probably walk() to find files
+                #        instead so we don't run into future problems.
+                # Also, for non-module_utils files we wanted to artificially restrict this.
+                # Need to make a policy decision about that.
+                for i in range(1, 10):
+                    contents += glob.glob("%s/%s" % (path, '/*' * i))
                 for c in contents:
                     if os.path.isdir(c) and c not in ret:
                         ret.append(c)
@@ -464,6 +471,13 @@ module_loader = PluginLoader(
     'ansible.modules',
     C.DEFAULT_MODULE_PATH,
     'library',
+)
+
+module_utils_loader = PluginLoader(
+    '',
+    'ansible.module_utils',
+    'module_utils',
+    'module_utils',
 )
 
 lookup_loader = PluginLoader(

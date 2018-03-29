@@ -1,5 +1,3 @@
-#!/usr/bin/env python
-#
 # (c) 2016 Red Hat Inc.
 #
 # This file is part of Ansible
@@ -21,92 +19,42 @@
 from __future__ import (absolute_import, division, print_function)
 __metaclass__ = type
 
-import os
-import sys
-import json
-
-from ansible.compat.tests import unittest
-from ansible.compat.tests.mock import patch, MagicMock
-from ansible.errors import AnsibleModuleExit
+from ansible.compat.tests.mock import patch
 from ansible.modules.network.eos import eos_config
-from ansible.module_utils.netcfg import NetworkConfig
-from ansible.module_utils import basic
-from ansible.module_utils._text import to_bytes
-
-PROVIDER_ARGS = {
-    'host': 'localhost',
-    'username': 'username',
-    'password': 'password'
-}
-
-def set_module_args(args):
-    args = json.dumps({'ANSIBLE_MODULE_ARGS': args})
-    basic._ANSIBLE_ARGS = to_bytes(args)
-
-fixture_path = os.path.join(os.path.dirname(__file__), 'fixtures')
-fixture_data = {}
-
-def load_fixture(name):
-    path = os.path.join(fixture_path, name)
-
-    if path in fixture_data:
-        return fixture_data[path]
-
-    with open(path) as f:
-        data = f.read()
-
-    try:
-        data = json.loads(data)
-    except:
-        pass
-
-    fixture_data[path] = data
-    return data
+from units.modules.utils import set_module_args
+from .eos_module import TestEosModule, load_fixture
 
 
-class TestEosConfigModule(unittest.TestCase):
+class TestEosConfigModule(TestEosModule):
+
+    module = eos_config
 
     def setUp(self):
+        super(TestEosConfigModule, self).setUp()
         self.mock_get_config = patch('ansible.modules.network.eos.eos_config.get_config')
         self.get_config = self.mock_get_config.start()
 
         self.mock_load_config = patch('ansible.modules.network.eos.eos_config.load_config')
         self.load_config = self.mock_load_config.start()
-
-        self.mock_supports_sessions = patch('ansible.modules.network.eos.eos_config.supports_sessions')
-        self.supports_sessions = self.mock_supports_sessions.start()
-        self.supports_sessions.return_value = True
+        self.mock_run_commands = patch('ansible.modules.network.eos.eos_config.run_commands')
+        self.run_commands = self.mock_run_commands.start()
 
     def tearDown(self):
+        super(TestEosConfigModule, self).tearDown()
         self.mock_get_config.stop()
         self.mock_load_config.stop()
 
-    def execute_module(self, failed=False, changed=False):
-
+    def load_fixtures(self, commands=None, transport='cli'):
         self.get_config.return_value = load_fixture('eos_config_config.cfg')
         self.load_config.return_value = dict(diff=None, session='session')
 
-        with self.assertRaises(AnsibleModuleExit) as exc:
-            eos_config.main()
-
-        result = exc.exception.result
-
-        if failed:
-            self.assertTrue(result.get('failed'))
-        else:
-            self.assertEqual(result.get('changed'), changed, result)
-
-        return result
-
     def test_eos_config_no_change(self):
         args = dict(lines=['hostname localhost'])
-        args.update(PROVIDER_ARGS)
         set_module_args(args)
         result = self.execute_module()
 
     def test_eos_config_src(self):
         args = dict(src=load_fixture('eos_config_candidate.cfg'))
-        args.update(PROVIDER_ARGS)
         set_module_args(args)
 
         result = self.execute_module(changed=True)
@@ -117,7 +65,6 @@ class TestEosConfigModule(unittest.TestCase):
 
     def test_eos_config_lines(self):
         args = dict(lines=['hostname switch01', 'ip domain-name eng.ansible.com'])
-        args.update(PROVIDER_ARGS)
         set_module_args(args)
 
         result = self.execute_module(changed=True)
@@ -127,9 +74,8 @@ class TestEosConfigModule(unittest.TestCase):
 
     def test_eos_config_before(self):
         args = dict(lines=['hostname switch01', 'ip domain-name eng.ansible.com'],
-                     before=['before command'])
+                    before=['before command'])
 
-        args.update(PROVIDER_ARGS)
         set_module_args(args)
 
         result = self.execute_module(changed=True)
@@ -140,9 +86,8 @@ class TestEosConfigModule(unittest.TestCase):
 
     def test_eos_config_after(self):
         args = dict(lines=['hostname switch01', 'ip domain-name eng.ansible.com'],
-                     after=['after command'])
+                    after=['after command'])
 
-        args.update(PROVIDER_ARGS)
         set_module_args(args)
 
         result = self.execute_module(changed=True)
@@ -153,7 +98,6 @@ class TestEosConfigModule(unittest.TestCase):
 
     def test_eos_config_parents(self):
         args = dict(lines=['ip address 1.2.3.4/5', 'no shutdown'], parents=['interface Ethernet10'])
-        args.update(PROVIDER_ARGS)
         set_module_args(args)
 
         result = self.execute_module(changed=True)
@@ -163,40 +107,78 @@ class TestEosConfigModule(unittest.TestCase):
 
     def test_eos_config_src_and_lines_fails(self):
         args = dict(src='foo', lines='foo')
-        args.update(PROVIDER_ARGS)
         set_module_args(args)
         result = self.execute_module(failed=True)
 
     def test_eos_config_match_exact_requires_lines(self):
         args = dict(match='exact')
-        args.update(PROVIDER_ARGS)
         set_module_args(args)
         result = self.execute_module(failed=True)
 
     def test_eos_config_match_strict_requires_lines(self):
         args = dict(match='strict')
-        args.update(PROVIDER_ARGS)
         set_module_args(args)
         result = self.execute_module(failed=True)
 
     def test_eos_config_replace_block_requires_lines(self):
         args = dict(replace='block')
-        args.update(PROVIDER_ARGS)
         set_module_args(args)
         result = self.execute_module(failed=True)
 
     def test_eos_config_replace_config_requires_src(self):
         args = dict(replace='config')
-        args.update(PROVIDER_ARGS)
         set_module_args(args)
         result = self.execute_module(failed=True)
 
     def test_eos_config_backup_returns__backup__(self):
         args = dict(backup=True)
-        args.update(PROVIDER_ARGS)
         set_module_args(args)
         result = self.execute_module()
         self.assertIn('__backup__', result)
 
+    def test_eos_config_save_when(self):
+        mock_run_commands = patch('ansible.modules.network.eos.eos_config.run_commands')
+        run_commands = mock_run_commands.start()
 
+        run_commands.return_value = [load_fixture('eos_config_config.cfg'),
+                                     load_fixture('eos_config_config.cfg')]
 
+        args = dict(save_when='modified')
+        set_module_args(args)
+        result = self.execute_module()
+
+        run_commands.return_value = [load_fixture('eos_config_config.cfg'),
+                                     load_fixture('eos_config_config_updated.cfg')]
+
+        args = dict(save_when='modified')
+        set_module_args(args)
+        result = self.execute_module(changed=True)
+
+        mock_run_commands.stop()
+
+    def test_eos_config_save_changed_true(self):
+        commands = ['hostname foo', 'interface GigabitEthernet0/0', 'no ip address']
+        set_module_args(dict(save_when='changed', lines=commands))
+        self.execute_module(changed=True)
+        self.assertEqual(self.run_commands.call_count, 1)
+        self.assertEqual(self.get_config.call_count, 1)
+        self.assertEqual(self.load_config.call_count, 1)
+        args = self.run_commands.call_args[0][1][0]['command']
+        self.assertIn('copy running-config startup-config', args)
+
+    def test_eos_config_save_changed_false(self):
+        set_module_args(dict(save_when='changed'))
+        self.execute_module(changed=False)
+        self.assertEqual(self.run_commands.call_count, 0)
+        self.assertEqual(self.get_config.call_count, 0)
+        self.assertEqual(self.load_config.call_count, 0)
+
+    def test_eos_config_save(self):
+        self.run_commands.return_value = "hostname foo"
+        set_module_args(dict(save=True))
+        self.execute_module(changed=True)
+        self.assertEqual(self.run_commands.call_count, 1)
+        self.assertEqual(self.get_config.call_count, 0)
+        self.assertEqual(self.load_config.call_count, 0)
+        args = self.run_commands.call_args[0][1][0]['command']
+        self.assertIn('copy running-config startup-config', args)

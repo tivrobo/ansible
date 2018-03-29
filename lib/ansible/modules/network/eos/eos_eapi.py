@@ -16,11 +16,10 @@
 # along with Ansible.  If not, see <http://www.gnu.org/licenses/>.
 #
 
-ANSIBLE_METADATA = {
-    'status': ['preview'],
-    'supported_by': 'core',
-    'version': '1.0'
-}
+ANSIBLE_METADATA = {'metadata_version': '1.1',
+                    'status': ['preview'],
+                    'supported_by': 'network'}
+
 
 DOCUMENTATION = """
 ---
@@ -38,6 +37,7 @@ description:
     Unix socket server. Use the options listed below to override the
     default configuration.
   - Requires EOS v4.12 or greater.
+extends_documentation_fragment: eos
 options:
   http:
     description:
@@ -47,16 +47,14 @@ options:
         when the value is set to False, the HTTP protocol is disabled.
         By default, when eAPI is first configured, the HTTP protocol is
         disabled.
-    required: false
-    default: no
-    choices: ['yes', 'no']
+    type: bool
+    default: 'no'
     aliases: ['enable_http']
   http_port:
     description:
       - Configures the HTTP port that will listen for connections when
         the HTTP transport protocol is enabled.  This argument accepts
         integer values in the valid range of 1 to 65535.
-    required: false
     default: 80
   https:
     description:
@@ -66,16 +64,14 @@ options:
         when the value is set to False, the HTTPS protocol is disabled.
         By default, when eAPI is first configured, the HTTPS protocol is
         enabled.
-    required: false
-    default: yes
-    choices: ['yes', 'no']
-    aliases: ['enable_http']
+    type: bool
+    default: 'yes'
+    aliases: ['enable_https']
   https_port:
     description:
       - Configures the HTTP port that will listen for connections when
         the HTTP transport protocol is enabled.  This argument accepts
         integer values in the valid range of 1 to 65535.
-    required: false
     default: 443
   local_http:
     description:
@@ -85,16 +81,14 @@ options:
         is enabled and restricted to connections from localhost only.  When
         the value is set to False, the HTTP local protocol is disabled.
       - Note is value is independent of the C(http) argument
-    required: false
-    default: false
-    choices: ['yes', 'no']
+    type: bool
+    default: 'no'
     aliases: ['enable_local_http']
   local_http_port:
     description:
       - Configures the HTTP port that will listen for connections when
         the HTTP transport protocol is enabled.  This argument accepts
         integer values in the valid range of 1 to 65535.
-    required: false
     default: 8080
   socket:
     description:
@@ -104,9 +98,8 @@ options:
         requests.  When the value is set to False, the UDS will not be
         available to handle requests.  By default when eAPI is first
         configured, the UDS is disabled.
-    required: false
-    default: false
-    choices: ['yes', 'no']
+    type: bool
+    default: 'no'
     aliases: ['enable_socket']
   vrf:
     description:
@@ -114,7 +107,6 @@ options:
         in the specified VRF.  By default, eAPI transports will listen
         for connections in the global table.  This value requires the
         VRF to already be created otherwise the task will fail.
-    required: false
     default: default
     version_added: "2.2"
   config:
@@ -126,8 +118,6 @@ options:
         every task in a playbook.  The I(config) argument allows the
         implementer to pass in the configuration to use as the base
         config for comparison.
-    required: false
-    default: nul
     version_added: "2.2"
   state:
     description:
@@ -135,7 +125,6 @@ options:
         on the remote device.  When this argument is set to C(started),
         eAPI is enabled to receive requests and when this argument is
         C(stopped), eAPI is disabled and will not receive requests.
-    required: false
     default: started
     choices: ['started', 'stopped']
 """
@@ -178,52 +167,61 @@ session_name:
   returned: when changed is True
   type: str
   sample: ansible_1479315771
-start:
-  description: The time the job started
-  returned: always
-  type: str
-  sample: "2016-11-16 10:38:15.126146"
-end:
-  description: The time the job ended
-  returned: always
-  type: str
-  sample: "2016-11-16 10:38:25.595612"
-delta:
-  description: The time elapsed to perform all operations
-  returned: always
-  type: str
-  sample: "0:00:10.469466"
 """
 import re
+import time
 
-from ansible.module_utils.local import LocalAnsibleModule
-from ansible.module_utils.eos import run_commands, load_config
+from ansible.module_utils.basic import AnsibleModule
+from ansible.module_utils.network.eos.eos import run_commands, load_config
 from ansible.module_utils.six import iteritems
+from ansible.module_utils.network.eos.eos import eos_argument_spec, check_args
+
+
+def check_transport(module):
+    transport = module.params['transport']
+    provider_transport = (module.params['provider'] or {}).get('transport')
+
+    if 'eapi' in (transport, provider_transport):
+        module.fail_json(msg='eos_eapi module is only supported over cli transport')
+
 
 def validate_http_port(value, module):
     if not 1 <= value <= 65535:
         module.fail_json(msg='http_port must be between 1 and 65535')
 
+
 def validate_https_port(value, module):
     if not 1 <= value <= 65535:
         module.fail_json(msg='http_port must be between 1 and 65535')
+
 
 def validate_local_http_port(value, module):
     if not 1 <= value <= 65535:
         module.fail_json(msg='http_port must be between 1 and 65535')
 
+
 def validate_vrf(value, module):
-    rc, out, err = run_commands(module, ['show vrf'])
-    configured_vrfs = re.findall('^\s+(\w+)(?=\s)', out[0],re.M)
+    out = run_commands(module, ['show vrf'])
+    configured_vrfs = []
+    lines = out[0].strip().splitlines()[3:]
+    for l in lines:
+        if not l:
+            continue
+        splitted_line = re.split(r'\s{2,}', l.strip())
+        if len(splitted_line) > 2:
+            configured_vrfs.append(splitted_line[0])
+
     configured_vrfs.append('default')
     if value not in configured_vrfs:
         module.fail_json(msg='vrf `%s` is not configured on the system' % value)
 
-def map_obj_to_commands(updates, module):
+
+def map_obj_to_commands(updates, module, warnings):
     commands = list()
     want, have = updates
 
-    needs_update = lambda x: want.get(x) is not None and (want.get(x) != have.get(x))
+    def needs_update(x):
+        return want.get(x) is not None and (want.get(x) != have.get(x))
 
     def add(cmd):
         if 'management api http-commands' not in commands:
@@ -234,33 +232,55 @@ def map_obj_to_commands(updates, module):
         if want['http'] is False:
             add('no protocol http')
         else:
-            port = want['http_port'] or 80
-            add('protocol http port %s' % port)
+            if have['http'] is False and want['http'] in (False, None):
+                warnings.append('protocol http is not enabled, not configuring http port value')
+            else:
+                port = want['http_port'] or 80
+                add('protocol http port %s' % port)
 
     if any((needs_update('https'), needs_update('https_port'))):
         if want['https'] is False:
             add('no protocol https')
         else:
-            port = want['https_port'] or 443
-            add('protocol https port %s' % port)
+            if have['https'] is False and want['https'] in (False, None):
+                warnings.append('protocol https is not enabled, not configuring https port value')
+            else:
+                port = want['https_port'] or 443
+                add('protocol https port %s' % port)
 
     if any((needs_update('local_http'), needs_update('local_http_port'))):
         if want['local_http'] is False:
             add('no protocol http localhost')
         else:
-            port = want['local_http_port'] or 8080
-            add('protocol http localhost port %s' % port)
+            if have['local_http'] is False and want['local_http'] in (False, None):
+                warnings.append('protocol local_http is not enabled, not configuring local_http port value')
+            else:
+                port = want['local_http_port'] or 8080
+                add('protocol http localhost port %s' % port)
+
+    if any((needs_update('socket'), needs_update('socket'))):
+        if want['socket'] is False:
+            add('no protocol unix-socket')
+        else:
+            add('protocol unix-socket')
+
+    if needs_update('state') and not needs_update('vrf'):
+        if want['state'] == 'stopped':
+            add('shutdown')
+        elif want['state'] == 'started':
+            add('no shutdown')
 
     if needs_update('vrf'):
         add('vrf %s' % want['vrf'])
-
-    if needs_update('state'):
+        # switching operational vrfs here
+        # need to add the desired state as well
         if want['state'] == 'stopped':
             add('shutdown')
         elif want['state'] == 'started':
             add('no shutdown')
 
     return commands
+
 
 def parse_state(data):
     if data[0]['enabled']:
@@ -270,7 +290,7 @@ def parse_state(data):
 
 
 def map_config_to_obj(module):
-    rc, out, err = run_commands(module, ['show management api http-commands | json'])
+    out = run_commands(module, ['show management api http-commands | json'])
     return {
         'http': out[0]['httpServer']['configured'],
         'http_port': out[0]['httpServer']['port'],
@@ -282,6 +302,7 @@ def map_config_to_obj(module):
         'vrf': out[0]['vrf'],
         'state': parse_state(out)
     }
+
 
 def map_params_to_obj(module):
     obj = {
@@ -304,8 +325,38 @@ def map_params_to_obj(module):
 
     return obj
 
+
+def verify_state(updates, module):
+    want, have = updates
+
+    invalid_state = [('http', 'httpServer'),
+                     ('https', 'httpsServer'),
+                     ('local_http', 'localHttpServer'),
+                     ('socket', 'unixSocketServer')]
+
+    timeout = module.params['timeout'] or 30
+    state = module.params['state']
+
+    while invalid_state:
+        out = run_commands(module, ['show management api http-commands | json'])
+        for index, item in enumerate(invalid_state):
+            want_key, eapi_key = item
+            if want[want_key] is not None:
+                if want[want_key] == out[0][eapi_key]['running']:
+                    del invalid_state[index]
+            elif state == 'stopped':
+                if not out[0][eapi_key]['running']:
+                    del invalid_state[index]
+            else:
+                del invalid_state[index]
+        time.sleep(1)
+        timeout -= 1
+        if timeout == 0:
+            module.fail_json(msg='timeout expired before eapi running state changed')
+
+
 def collect_facts(module, result):
-    rc, out, err = run_commands(module, ['show management api http-commands | json'])
+    out = run_commands(module, ['show management api http-commands | json'])
     facts = dict(eos_eapi_urls=dict())
     for each in out[0]['urls']:
         intf, url = each.split(' : ')
@@ -314,6 +365,7 @@ def collect_facts(module, result):
             facts['eos_eapi_urls'][key] = list()
         facts['eos_eapi_urls'][key].append(str(url).strip())
     result['ansible_facts'] = facts
+
 
 def main():
     """ main entry point for module execution
@@ -332,18 +384,27 @@ def main():
 
         vrf=dict(default='default'),
 
+        config=dict(),
         state=dict(default='started', choices=['stopped', 'started']),
     )
 
-    module = LocalAnsibleModule(argument_spec=argument_spec,
-                                supports_check_mode=True)
+    argument_spec.update(eos_argument_spec)
+
+    module = AnsibleModule(argument_spec=argument_spec,
+                           supports_check_mode=True)
+
+    check_transport(module)
 
     result = {'changed': False}
+
+    warnings = list()
+    if module.params['config']:
+        warnings.append('config parameter is no longer necessary and will be ignored')
 
     want = map_params_to_obj(module)
     have = map_config_to_obj(module)
 
-    commands = map_obj_to_commands((want, have), module)
+    commands = map_obj_to_commands((want, have), module, warnings)
     result['commands'] = commands
 
     if commands:
@@ -354,7 +415,13 @@ def main():
         result['session_name'] = response.get('session')
         result['changed'] = True
 
+    if result['changed']:
+        verify_state((want, have), module)
+
     collect_facts(module, result)
+
+    if warnings:
+        result['warnings'] = warnings
 
     module.exit_json(**result)
 

@@ -2,26 +2,16 @@
 # -*- coding: utf-8 -*-
 
 # (c) 2017, Jasper Lievisse Adriaanse <j@jasper.la>
-#
-# This file is part of Ansible
-#
-# Ansible is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-#
-# Ansible is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with Ansible. If not, see <http://www.gnu.org/licenses/>.
-#
+# GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
-ANSIBLE_METADATA = {'status': ['preview'],
-                    'supported_by': 'community',
-                    'version': '1.0'}
+from __future__ import absolute_import, division, print_function
+__metaclass__ = type
+
+
+ANSIBLE_METADATA = {'metadata_version': '1.1',
+                    'status': ['preview'],
+                    'supported_by': 'community'}
+
 
 DOCUMENTATION = '''
 ---
@@ -32,6 +22,11 @@ description:
 version_added: "2.3"
 author: Jasper Lievisse Adriaanse (@jasperla)
 options:
+  archive_on_delete:
+    required: false
+    description:
+      - When enabled, the zone dataset will be mounted on C(/zones/archive)
+        upon removal.
   autoboot:
     required: false
     description:
@@ -41,7 +36,11 @@ options:
     choices: [ joyent, joyent-minimal, kvm, lx ]
     default: joyent
     description:
-      - Type for of virtual machine.
+      - Type of virtual machine.
+  boot:
+    required: false
+    description:
+      - Set the boot order for KVM VMs.
   cpu_cap:
     required: false
     description:
@@ -52,6 +51,12 @@ options:
     description:
       - Sets a limit on the number of fair share scheduler (FSS) CPU shares for
         a VM. This limit is relative to all other VMs on the system.
+  cpu_type:
+    required: false
+    choices: [ qemu64, host ]
+    default: qemu64
+    description:
+      - Control the type of virtual CPU exposed to KVM VMs.
   customer_metadata:
     required: false
     description:
@@ -73,6 +78,11 @@ options:
     required: false
     description:
       - Domain value for C(/etc/hosts).
+  docker:
+    required: false
+    description:
+      - Docker images need this flag enabled along with the I(brand) set to C(lx).
+    version_added: "2.5"
   filesystems:
       required: false
       description:
@@ -97,6 +107,10 @@ options:
     required: false
     description:
       - Image UUID.
+  indestructible_delegated:
+    required: false
+    description:
+      - Adds an C(@indestructible) snapshot to delegated datasets.
   indestructible_zoneroot:
     required: false
     description:
@@ -106,15 +120,32 @@ options:
     description:
       - Metadata to be set and associated with this VM, this contains operator
         generated keys.
+  internal_metadata_namespace:
+    required: false
+    description:
+      - List of namespaces to be set as I(internal_metadata-only); these namespaces
+        will come from I(internal_metadata) rather than I(customer_metadata).
   kernel_version:
     required: false
     description:
       - Kernel version to emulate for LX VMs.
+  limit_priv:
+    required: false
+    description:
+      - Set (comma separated) list of privileges the zone is allowed to use.
   maintain_resolvers:
     required: false
     description:
       - Resolvers in C(/etc/resolv.conf) will be updated when updating
         the I(resolvers) property.
+  max_locked_memory:
+    required: false
+    description:
+      - Total amount of memory (in MiBs) on the host that can be locked by this VM.
+  max_lwps:
+    required: false
+    description:
+      - Maximum number of lightweight processes this VM is allowed to have running.
   max_physical_memory:
     required: false
     description:
@@ -123,6 +154,11 @@ options:
     required: false
     description:
       - Maximum amount of virtual memory (in MiBs) the VM is allowed to use.
+  mdata_exec_timeout:
+    required: false
+    description:
+      - Timeout in seconds (or 0 to disable) for the C(svc:/smartdc/mdata:execute) service
+        that runs user-scripts in the zone.
   name:
     required: false
     aliases: [ alias ]
@@ -136,6 +172,16 @@ options:
     required: false
     description:
       - A list of nics to add, valid properties are documented in vmadm(1M).
+  nowait:
+    required: false
+    description:
+      - Consider the provisioning complete when the VM first starts, rather than
+        when the VM has rebooted.
+  qemu_opts:
+    required: false
+    description:
+      - Additional qemu arguments for KVM guests. This overwrites the default arguments
+        provided by vmadm(1M) and should only be used for debugging.
   qemu_extra_opts:
     required: false
     description:
@@ -152,6 +198,20 @@ options:
     required: false
     description:
       - List of resolvers to be put into C(/etc/resolv.conf).
+  routes:
+    required: false
+    description:
+      - Dictionary that maps destinations to gateways, these will be set as static
+        routes in the VM.
+  spice_opts:
+    required: false
+    description:
+      - Addition options for SPICE-enabled KVM VMs.
+  spice_password:
+    required: false
+    description:
+      - Password required to connect to SPICE. By default no password is set.
+        Please note this can be read from the Global Zone.
   state:
     required: true
     choices: [ present, absent, stopped, restarted ]
@@ -162,6 +222,10 @@ options:
         shutdown the zone before removing it.
         C(stopped) means the zone will be created if it doesn't exist already, before shutting
         it down.
+  tmpfs:
+    required: false
+    description:
+      - Amount of memory (in MiBs) that will be available in the VM for the C(/tmp) filesystem.
   uuid:
     required: false
     description:
@@ -170,15 +234,58 @@ options:
     required: false
     description:
       - Number of virtual CPUs for a KVM guest.
+  vga:
+    required: false
+    description:
+      - Specify VGA emulation used by KVM VMs.
+  virtio_txburst:
+    required: false
+    description:
+      - Number of packets that can be sent in a single flush of the tx queue of virtio NICs.
+  virtio_txtimer:
+    required: false
+    description:
+      - Timeout (in nanoseconds) for the TX timer of virtio NICs.
+  vnc_password:
+    required: false
+    description:
+      - Password required to connect to VNC. By default no password is set.
+        Please note this can be read from the Global Zone.
   vnc_port:
     required: false
     description:
       - TCP port to listen of the VNC server. Or set C(0) for random,
         or C(-1) to disable.
+  zfs_data_compression:
+    required: false
+    description:
+      - Specifies compression algorithm used for this VMs data dataset. This option
+        only has effect on delegated datasets.
+  zfs_data_recsize:
+    required: false
+    description:
+      - Suggested block size (power of 2) for files in the delegated dataset's filesystem.
+  zfs_filesystem_limit:
+    required: false
+    description:
+      - Maximum number of filesystems the VM can have.
   zfs_io_priority:
     required: false
     description:
       - IO throttle priority value relative to other VMs.
+  zfs_root_compression:
+    required: false
+    description:
+      - Specifies compression algorithm used for this VMs root dataset. This option
+        only has effect on the zoneroot dataset.
+  zfs_root_recsize:
+    required: false
+    description:
+      - Suggested block size (power of 2) for files in the zoneroot dataset's filesystem.
+  zfs_snapshot_limit:
+    required: false
+    description:
+      - Number of snapshots the VM can have.
   zpool:
     required: false
     description:
@@ -233,17 +340,15 @@ state:
   sample: 'running'
 '''
 
-from ansible.module_utils.basic import AnsibleModule
-from ansible.module_utils.pycompat24 import get_exception
-from ansible.module_utils._text import to_native
+import json
 import os
 import re
 import tempfile
 import traceback
-try:
-    import json
-except ImportError:
-    import simplejson as json
+
+
+from ansible.module_utils.basic import AnsibleModule
+from ansible.module_utils._text import to_native
 
 # While vmadm(1M) supports a -E option to return any errors in JSON, the
 # generated JSON does not play well with the JSON parsers of Python.
@@ -264,11 +369,10 @@ def get_vm_prop(module, uuid, prop):
 
     try:
         stdout_json = json.loads(stdout)
-    except:
-        e = get_exception()
+    except Exception as e:
         module.fail_json(
-            msg='Invalid JSON returned by vmadm for uuid lookup of {0}'.format(alias),
-            details=to_native(e))
+            msg='Invalid JSON returned by vmadm for uuid lookup of {0}'.format(prop),
+            details=to_native(e), exception=traceback.format_exc())
 
     if len(stdout_json) > 0 and prop in stdout_json[0]:
         return stdout_json[0][prop]
@@ -295,11 +399,10 @@ def get_vm_uuid(module, alias):
     else:
         try:
             stdout_json = json.loads(stdout)
-        except:
-            e = get_exception()
+        except Exception as e:
             module.fail_json(
                 msg='Invalid JSON returned by vmadm for uuid lookup of {0}'.format(alias),
-                details=to_native(e))
+                details=to_native(e), exception=traceback.format_exc())
 
         if len(stdout_json) > 0 and 'uuid' in stdout_json[0]:
             return stdout_json[0]['uuid']
@@ -317,9 +420,9 @@ def get_all_vm_uuids(module):
     try:
         stdout_json = json.loads(stdout)
         return [v['uuid'] for v in stdout_json]
-    except:
-        e = get_exception()
-        module.fail_json(msg='Could not retrieve VM UUIDs', details=to_native(e))
+    except Exception as e:
+        module.fail_json(msg='Could not retrieve VM UUIDs', details=to_native(e),
+                         exception=traceback.format_exc())
 
 
 def new_vm(module, uuid, vm_state):
@@ -352,9 +455,8 @@ def new_vm(module, uuid, vm_state):
     except Exception as e:
         # Since the payload may contain sensitive information, fail hard
         # if we cannot remove the file so the operator knows about it.
-        module.fail_json(
-            msg='Could not remove temporary JSON payload file {0}'.format(payload_file),
-            exception=traceback.format_exc(e))
+        module.fail_json(msg='Could not remove temporary JSON payload file {0}: {1}'.format(payload_file, to_native(e)),
+                         exception=traceback.format_exc())
 
     return changed, vm_uuid
 
@@ -418,7 +520,7 @@ def create_payload(module, uuid):
         vmdef_json = json.dumps(vmdef)
     except Exception as e:
         module.fail_json(
-            msg='Could not create valid JSON payload', exception=traceback.format_exc(e))
+            msg='Could not create valid JSON payload', exception=traceback.format_exc())
 
     # Create the temporary file that contains our payload, and set tight
     # permissions for it may container sensitive information.
@@ -427,15 +529,14 @@ def create_payload(module, uuid):
         # drop the mkstemp call and rely on ANSIBLE_KEEP_REMOTE_FILES to retain
         # the payload (thus removing the `save_payload` option).
         fname = tempfile.mkstemp()[1]
-        fh = open(fname, 'w')
         os.chmod(fname, 0o400)
-        fh.write(vmdef_json)
-        fh.close()
+        with open(fname, 'w') as fh:
+            fh.write(vmdef_json)
     except Exception as e:
-        module.fail_json(
-            msg='Could not save JSON payload', exception=traceback.format_exc(e))
+        module.fail_json(msg='Could not save JSON payload: %s' % to_native(e), exception=traceback.format_exc())
 
     return fname
+
 
 def vm_state_transition(module, uuid, vm_state):
     ret = set_vm_state(module, uuid, vm_state)
@@ -503,18 +604,26 @@ def main():
     # They're not required and have a default of None.
     properties = {
         'str': [
-            'disk_driver', 'dns_domain', 'fs_allowed', 'hostname', 'image_uuid',
-            'kernel_version', 'nic_driver', 'qemu_extra_opts', 'uuid', 'zpool'
+            'boot', 'disk_driver', 'dns_domain', 'fs_allowed', 'hostname',
+            'image_uuid', 'internal_metadata_namespace', 'kernel_version',
+            'limit_priv', 'nic_driver', 'qemu_opts', 'qemu_extra_opts',
+            'spice_opts', 'uuid', 'vga', 'zfs_data_compression',
+            'zfs_root_compression', 'zpool'
         ],
         'bool': [
-            'autoboot', 'debug', 'delegate_dataset', 'firewall_enabled',
-            'force', 'indestructible_zoneroot', 'maintain_resolvers',
+            'archive_on_delete', 'autoboot', 'debug', 'delegate_dataset',
+            'docker', 'firewall_enabled', 'force', 'indestructible_delegated',
+            'indestructible_zoneroot', 'maintain_resolvers', 'nowait'
         ],
         'int': [
-            'cpu_cap', 'cpu_shares', 'max_physical_memory', 'max_swap',
-            'quota', 'ram', 'vcpus', 'vnc_port', 'zfs_io_priority',
+            'cpu_cap', 'cpu_shares', 'max_locked_memory', 'max_lwps',
+            'max_physical_memory', 'max_swap', 'mdata_exec_timeout',
+            'quota', 'ram', 'tmpfs', 'vcpus', 'virtio_txburst',
+            'virtio_txtimer', 'vnc_port', 'zfs_data_recsize',
+            'zfs_filesystem_limit', 'zfs_io_priority', 'zfs_root_recsize',
+            'zfs_snapshot_limit'
         ],
-        'dict': ['customer_metadata', 'internal_metadata'],
+        'dict': ['customer_metadata', 'internal_metadata', 'routes'],
         'list': ['disks', 'nics', 'resolvers', 'filesystems']
     }
 
@@ -534,6 +643,14 @@ def main():
             type='str',
             choices=['joyent', 'joyent-minimal', 'kvm', 'lx']
         ),
+        cpu_type=dict(
+            default='qemu64',
+            type='str',
+            choices=['host', 'qemu64']
+        ),
+        # Regular strings, however these require additional options.
+        spice_password=dict(type='str', no_log=True),
+        vnc_password=dict(type='str', no_log=True),
     )
 
     # Add our 'simple' options to options dict.
@@ -554,7 +671,7 @@ def main():
     uuid = p['uuid']
     state = p['state']
 
-    # Translate the state paramter into something we can use later on.
+    # Translate the state parameter into something we can use later on.
     if state in ['present', 'running']:
         vm_state = 'running'
     elif state in ['stopped', 'created']:

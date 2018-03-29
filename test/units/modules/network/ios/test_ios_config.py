@@ -20,45 +20,19 @@
 from __future__ import (absolute_import, division, print_function)
 __metaclass__ = type
 
-import os
-import json
-
-from ansible.compat.tests import unittest
-from ansible.compat.tests.mock import patch, MagicMock
-from ansible.errors import AnsibleModuleExit
+from ansible.compat.tests.mock import patch
 from ansible.modules.network.ios import ios_config
-from ansible.module_utils import basic
-from ansible.module_utils._text import to_bytes
+from units.modules.utils import set_module_args
+from .ios_module import TestIosModule, load_fixture
 
 
-def set_module_args(args):
-    args = json.dumps({'ANSIBLE_MODULE_ARGS': args})
-    basic._ANSIBLE_ARGS = to_bytes(args)
+class TestIosConfigModule(TestIosModule):
 
-fixture_path = os.path.join(os.path.dirname(__file__), 'fixtures')
-fixture_data = {}
-
-def load_fixture(name):
-    path = os.path.join(fixture_path, name)
-
-    if path in fixture_data:
-        return fixture_data[path]
-
-    with open(path) as f:
-        data = f.read()
-
-    try:
-        data = json.loads(data)
-    except:
-        pass
-
-    fixture_data[path] = data
-    return data
-
-
-class TestIosConfigModule(unittest.TestCase):
+    module = ios_config
 
     def setUp(self):
+        super(TestIosConfigModule, self).setUp()
+
         self.mock_get_config = patch('ansible.modules.network.ios.ios_config.get_config')
         self.get_config = self.mock_get_config.start()
 
@@ -69,34 +43,15 @@ class TestIosConfigModule(unittest.TestCase):
         self.run_commands = self.mock_run_commands.start()
 
     def tearDown(self):
+        super(TestIosConfigModule, self).tearDown()
         self.mock_get_config.stop()
         self.mock_load_config.stop()
         self.mock_run_commands.stop()
 
-    def execute_module(self, failed=False, changed=False, commands=None,
-            sort=True, defaults=False):
-
-        config_file = 'ios_config_defaults.cfg' if defaults else 'ios_config_config.cfg'
+    def load_fixtures(self, commands=None):
+        config_file = 'ios_config_config.cfg'
         self.get_config.return_value = load_fixture(config_file)
         self.load_config.return_value = None
-
-        with self.assertRaises(AnsibleModuleExit) as exc:
-            ios_config.main()
-
-        result = exc.exception.result
-
-        if failed:
-            self.assertTrue(result['failed'], result)
-        else:
-            self.assertEqual(result.get('changed'), changed, result)
-
-        if commands:
-            if sort:
-                self.assertEqual(sorted(commands), sorted(result['updates']), result['updates'])
-            else:
-                self.assertEqual(commands, result['updates'], result['updates'])
-
-        return result
 
     def test_ios_config_unchanged(self):
         src = load_fixture('ios_config_config.cfg')
@@ -115,14 +70,43 @@ class TestIosConfigModule(unittest.TestCase):
         result = self.execute_module()
         self.assertIn('__backup__', result)
 
+    def test_ios_config_save_always(self):
+        self.run_commands.return_value = "Hostname foo"
+        set_module_args(dict(save_when='always'))
+        self.execute_module(changed=True)
+        self.assertEqual(self.run_commands.call_count, 1)
+        self.assertEqual(self.get_config.call_count, 0)
+        self.assertEqual(self.load_config.call_count, 0)
+        args = self.run_commands.call_args[0][1]
+        self.assertIn('copy running-config startup-config\r', args)
+
+    def test_ios_config_save_changed_true(self):
+        src = load_fixture('ios_config_src.cfg')
+        set_module_args(dict(src=src, save_when='changed'))
+        commands = ['hostname foo', 'interface GigabitEthernet0/0', 'no ip address']
+        self.execute_module(changed=True, commands=commands)
+        self.assertEqual(self.run_commands.call_count, 1)
+        self.assertEqual(self.get_config.call_count, 1)
+        self.assertEqual(self.load_config.call_count, 1)
+        args = self.run_commands.call_args[0][1]
+        self.assertIn('copy running-config startup-config\r', args)
+
+    def test_ios_config_save_changed_false(self):
+        set_module_args(dict(save_when='changed'))
+        self.execute_module(changed=False)
+        self.assertEqual(self.run_commands.call_count, 0)
+        self.assertEqual(self.get_config.call_count, 0)
+        self.assertEqual(self.load_config.call_count, 0)
+
     def test_ios_config_save(self):
+        self.run_commands.return_value = "hostname foo"
         set_module_args(dict(save=True))
         self.execute_module(changed=True)
         self.assertEqual(self.run_commands.call_count, 1)
         self.assertEqual(self.get_config.call_count, 0)
         self.assertEqual(self.load_config.call_count, 0)
         args = self.run_commands.call_args[0][1]
-        self.assertIn('copy running-config startup-config', args)
+        self.assertIn('copy running-config startup-config\r', args)
 
     def test_ios_config_lines_wo_parents(self):
         set_module_args(dict(lines=['hostname foo']))
@@ -134,25 +118,20 @@ class TestIosConfigModule(unittest.TestCase):
         commands = ['interface GigabitEthernet0/0', 'shutdown']
         self.execute_module(changed=True, commands=commands)
 
-    def test_ios_config_defaults(self):
-        set_module_args(dict(lines=['no shutdown'], parents=['interface GigabitEthernet0/0'],
-                             defaults=True))
-        self.execute_module(defaults=True)
-
     def test_ios_config_before(self):
-        set_module_args(dict(lines=['hostname foo'], before=['test1','test2']))
+        set_module_args(dict(lines=['hostname foo'], before=['test1', 'test2']))
         commands = ['test1', 'test2', 'hostname foo']
         self.execute_module(changed=True, commands=commands, sort=False)
 
     def test_ios_config_after(self):
-        set_module_args(dict(lines=['hostname foo'], after=['test1','test2']))
+        set_module_args(dict(lines=['hostname foo'], after=['test1', 'test2']))
         commands = ['hostname foo', 'test1', 'test2']
         self.execute_module(changed=True, commands=commands, sort=False)
 
     def test_ios_config_before_after_no_change(self):
         set_module_args(dict(lines=['hostname router'],
                              before=['test1', 'test2'],
-                             after=['test3','test4']))
+                             after=['test3', 'test4']))
         self.execute_module()
 
     def test_ios_config_config(self):
@@ -168,9 +147,9 @@ class TestIosConfigModule(unittest.TestCase):
         commands = parents + lines
         self.execute_module(changed=True, commands=commands)
 
-    def test_ios_config_force(self):
+    def test_ios_config_match_none(self):
         lines = ['hostname router']
-        set_module_args(dict(lines=lines, force=True))
+        set_module_args(dict(lines=lines, match='none'))
         self.execute_module(changed=True, commands=lines)
 
     def test_ios_config_match_none(self):
@@ -195,3 +174,33 @@ class TestIosConfigModule(unittest.TestCase):
         set_module_args(dict(lines=lines, parents=parents, match='exact'))
         commands = parents + lines
         self.execute_module(changed=True, commands=commands, sort=False)
+
+    def test_ios_config_src_and_lines_fails(self):
+        args = dict(src='foo', lines='foo')
+        set_module_args(args)
+        result = self.execute_module(failed=True)
+
+    def test_ios_config_src_and_parents_fails(self):
+        args = dict(src='foo', parents='foo')
+        set_module_args(args)
+        result = self.execute_module(failed=True)
+
+    def test_ios_config_match_exact_requires_lines(self):
+        args = dict(match='exact')
+        set_module_args(args)
+        result = self.execute_module(failed=True)
+
+    def test_ios_config_match_strict_requires_lines(self):
+        args = dict(match='strict')
+        set_module_args(args)
+        result = self.execute_module(failed=True)
+
+    def test_ios_config_replace_block_requires_lines(self):
+        args = dict(replace='block')
+        set_module_args(args)
+        result = self.execute_module(failed=True)
+
+    def test_ios_config_replace_config_requires_src(self):
+        args = dict(replace='config')
+        set_module_args(args)
+        result = self.execute_module(failed=True)

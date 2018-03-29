@@ -16,11 +16,10 @@
 # along with Ansible.  If not, see <http://www.gnu.org/licenses/>.
 #
 
-ANSIBLE_METADATA = {
-    'status': ['preview'],
-    'supported_by': 'core',
-    'version': '1.0'
-}
+ANSIBLE_METADATA = {'metadata_version': '1.1',
+                    'status': ['preview'],
+                    'supported_by': 'network'}
+
 
 DOCUMENTATION = """
 ---
@@ -35,6 +34,8 @@ description:
     module will always collect a base set of facts from the device
     and can enable or disable collection of additional facts.
 extends_documentation_fragment: eos
+notes:
+  - Tested against EOS 4.15
 options:
   gather_subset:
     description:
@@ -78,6 +79,7 @@ ansible_net_model:
 ansible_net_serialnum:
   description: The serial number of the remote device
   returned: always
+  type: str
 ansible_net_version:
   description: The operating system version running on the remote device
   returned: always
@@ -135,32 +137,11 @@ ansible_net_neighbors:
 """
 import re
 
-from functools import partial
-
-from ansible.module_utils import eos
-from ansible.module_utils import eapi
 from ansible.module_utils.basic import AnsibleModule
-from ansible.module_utils.local import LocalAnsibleModule
 from ansible.module_utils.six import iteritems
+from ansible.module_utils.network.eos.eos import run_commands
+from ansible.module_utils.network.eos.eos import eos_argument_spec, check_args
 
-SHARED_LIB = 'eos'
-
-
-def get_ansible_module():
-    if SHARED_LIB == 'eos':
-        return LocalAnsibleModule
-    return AnsibleModule
-
-def invoke(name, *args, **kwargs):
-    obj = globals().get(SHARED_LIB)
-    func = getattr(obj, name)
-    return func(*args, **kwargs)
-
-run_commands = partial(invoke, 'run_commands')
-
-def check_args(module, warnings):
-    if SHARED_LIB == 'eapi':
-        eapi.check_args(module)
 
 class FactsBase(object):
 
@@ -210,6 +191,7 @@ class Default(FactsBase):
             value = None
         return dict(image=value)
 
+
 class Hardware(FactsBase):
 
     COMMANDS = [
@@ -224,6 +206,10 @@ class Hardware(FactsBase):
 
     def populate_filesystems(self):
         data = self.responses[0]
+
+        if isinstance(data, dict):
+            data = data['messages'][0]
+
         fs = re.findall(r'^Directory of (.+)/', data, re.M)
         return dict(filesystems=fs)
 
@@ -233,6 +219,7 @@ class Hardware(FactsBase):
             memfree_mb=int(values['memFree']) / 1024,
             memtotal_mb=int(values['memTotal']) / 1024
         )
+
 
 class Config(FactsBase):
 
@@ -328,6 +315,7 @@ FACT_SUBSETS = dict(
 
 VALID_SUBSETS = frozenset(FACT_SUBSETS.keys())
 
+
 def main():
     """main entry point for module execution
     """
@@ -335,10 +323,10 @@ def main():
         gather_subset=dict(default=['!config'], type='list')
     )
 
-    argument_spec.update(eapi.eapi_argument_spec)
+    argument_spec.update(eos_argument_spec)
 
-    cls = get_ansible_module()
-    module = cls(argument_spec=argument_spec, supports_check_mode=True)
+    module = AnsibleModule(argument_spec=argument_spec,
+                           supports_check_mode=True)
 
     warnings = list()
     check_args(module, warnings)
@@ -393,9 +381,8 @@ def main():
         key = 'ansible_net_%s' % key
         ansible_facts[key] = value
 
-    module.exit_json(ansible_facts=ansible_facts)
+    module.exit_json(ansible_facts=ansible_facts, warnings=warnings)
 
 
 if __name__ == '__main__':
-    SHARED_LIB = 'eapi'
     main()

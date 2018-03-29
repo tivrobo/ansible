@@ -2,16 +2,10 @@
 
 set -o pipefail
 
-add-apt-repository 'ppa:ubuntu-toolchain-r/test'
-add-apt-repository 'ppa:fkrull/deadsnakes'
+declare -a args
+IFS='/:' read -ra args <<< "$1"
 
-apt-get update -qq
-apt-get install -qq \
-    g++-4.9 \
-    python3.6-dev \
+version="${args[1]}"
 
-ln -sf x86_64-linux-gnu-gcc-4.9 /usr/bin/x86_64-linux-gnu-gcc
-
-pip install tox --disable-pip-version-check
-
-ansible-test units --color -v --tox --coverage
+# shellcheck disable=SC2086
+ansible-test units --color -v --docker default --python "${version}" ${COVERAGE:+"$COVERAGE"} ${CHANGED:+"$CHANGED"} \

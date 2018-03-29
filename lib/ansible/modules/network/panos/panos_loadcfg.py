@@ -41,18 +41,15 @@ options:
     username:
         description:
             - username for authentication
-        required: false
         default: "admin"
     file:
         description:
             - configuration file to load
-        required: false
-        default: None
     commit:
         description:
             - commit if changed
-        required: false
-        default: true
+        type: bool
+        default: 'yes'
 '''
 
 EXAMPLES = '''
@@ -71,13 +68,14 @@ EXAMPLES = '''
       file: "{{result.filename}}"
 '''
 
-RETURN='''
+RETURN = '''
 # Default return values
 '''
 
-ANSIBLE_METADATA = {'status': ['preview'],
-                    'supported_by': 'community',
-                    'version': '1.0'}
+ANSIBLE_METADATA = {'metadata_version': '1.1',
+                    'status': ['preview'],
+                    'supported_by': 'community'}
+
 
 from ansible.module_utils.basic import AnsibleModule
 

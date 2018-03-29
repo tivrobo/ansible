@@ -34,32 +34,27 @@ options:
         description:
             - IP address (or hostname) of PAN-OS device
         required: true
-        default: null
     password:
         description:
             - password for authentication
         required: true
-        default: null
     username:
         description:
             - username for authentication
-        required: false
         default: "admin"
     dag_name:
         description:
             - name of the dynamic address group
         required: true
-        default: null
     dag_filter:
         description:
             - dynamic filter user by the dynamic address group
         required: true
-        default: null
     commit:
         description:
             - commit if changed
-        required: false
-        default: true
+        type: bool
+        default: 'yes'
 '''
 
 EXAMPLES = '''
@@ -71,13 +66,14 @@ EXAMPLES = '''
     dag_filter: "'aws-tag.aws:cloudformation:logical-id.ServerInstance' and 'instanceState.running'"
 '''
 
-RETURN='''
+RETURN = '''
 # Default return values
 '''
 
-ANSIBLE_METADATA = {'status': ['preview'],
-                    'supported_by': 'community',
-                    'version': '1.0'}
+ANSIBLE_METADATA = {'metadata_version': '1.1',
+                    'status': ['preview'],
+                    'supported_by': 'community'}
+
 
 from ansible.module_utils.basic import AnsibleModule
 
@@ -119,7 +115,7 @@ def add_dag(xapi, dag_name, dag_filter):
 def main():
     argument_spec = dict(
         ip_address=dict(required=True),
-        password=dict(required=True),
+        password=dict(required=True, no_log=True),
         username=dict(default='admin'),
         dag_name=dict(required=True),
         dag_filter=dict(required=True),

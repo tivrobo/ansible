@@ -18,14 +18,19 @@ and guidelines:
 
 * If packaging modules in an RPM, they only need to be installed on the control machine and should be dropped into /usr/share/ansible.  This is entirely optional and up to you.
 
-* Modules must output valid JSON only. The toplevel return type must be a hash (dictionary) although they can be nested.  Lists or simple scalar values are not supported, though they can be trivially contained inside a dictionary.
+* Modules must output valid JSON only. The top level return type must be a hash (dictionary) although they can be nested.  Lists or simple scalar values are not supported, though they can be trivially contained inside a dictionary.
 
 * In the event of failure, a key of 'failed' should be included, along with a string explanation in 'msg'.  Modules that raise tracebacks (stacktraces) are generally considered 'poor' modules, though Ansible can deal with these returns and will automatically convert anything unparseable into a failed result.  If you are using the AnsibleModule common Python code, the 'failed' element will be included for you automatically when you call 'fail_json'.
 
-* Return codes from modules are actually not significant, but continue on with 0=success and non-zero=failure for reasons of future proofing.
+* Return codes from modules are used if 'failed' is missing, 0=success and non-zero=failure.
 
 * As results from many hosts will be aggregated at once, modules should return only relevant output.  Returning the entire contents of a log file is generally bad form.
 
+* Modules should have a concise and well defined functionality. Basically, follow the UNIX philosophy of doing one thing well.
+
+* Modules should not require that a user know all the underlying options of an api/tool to be used. For instance, if the legal values for a required module parameter cannot be documented, that's a sign that the module would be rejected.
+
+* Modules should typically encompass much of the logic for interacting with a resource. A lightweight wrapper around an API that does not contain much logic would likely cause users to offload too much logic into a playbook, and for this reason the module would be rejected. Instead try creating multiple modules for interacting with smaller individual pieces of the API.
 
 .. _debugging_ansiblemodule_based_modules:
 
@@ -72,7 +77,7 @@ your debugging session will start:
 
 Setting :envvar:`ANSIBLE_KEEP_REMOTE_FILES` to ``1`` tells Ansible to keep the
 remote module files instead of deleting them after the module finishes
-executing.  Giving Ansible the ``-vvv`` optin makes Ansible more verbose.
+executing.  Giving Ansible the ``-vvv`` option makes Ansible more verbose.
 That way it prints the file name of the temporary module file for you to see.
 
 If you want to examine the wrapper file you can.  It will show a small python
@@ -103,13 +108,13 @@ When you look into the debug_dir you'll see a directory structure like this::
 
 * The :file:`args` file contains a JSON string.  The string is a dictionary
   containing the module arguments and other variables that Ansible passes into
-  the module to change it's behaviour.  If you want to modify the parameters
+  the module to change its behaviour.  If you want to modify the parameters
   that are passed to the module, this is the file to do it in.
 
 * The :file:`ansible` directory contains code from
   :mod:`ansible.module_utils` that is used by the module.  Ansible includes
   files for any :`module:`ansible.module_utils` imports in the module but not
-  no files from any other module.  So if your module uses
+  any files from any other module.  So if your module uses
   :mod:`ansible.module_utils.url` Ansible will include it for you, but if
   your module includes :mod:`requests` then you'll have to make sure that
   the python requests library is installed on the system before running the
@@ -171,7 +176,7 @@ You should never do this in a module:
 
 .. code-block:: python
 
-    print "some status message"
+    print("some status message")
 
 Because the output is supposed to be valid JSON.
 
@@ -183,11 +188,10 @@ how the command module is implemented.
 If a module returns stderr or otherwise fails to produce valid JSON, the actual output
 will still be shown in Ansible, but the command will not succeed.
 
-Don't write to files directly; use a temporary file and then use the `atomic_move` function from `ansibile.module_utils.basic` to move the updated temporary file into place. This prevents data corruption and ensures that the correct context for the file is kept.
+Don't write to files directly; use a temporary file and then use the `atomic_move` function from `ansible.module_utils.basic` to move the updated temporary file into place. This prevents data corruption and ensures that the correct context for the file is kept.
 
 Avoid creating a module that does the work of other modules; this leads to code duplication and divergence, and makes things less uniform, unpredictable and harder to maintain. Modules should be the building blocks. Instead of creating a module that does the work of other modules, use Plays and Roles instead.  
 
 Avoid creating 'caches'. Ansible is designed without a central server or authority, so you cannot guarantee it will not run with different permissions, options or locations. If you need a central authority, have it on top of Ansible (for example, using bastion/cm/ci server or tower); do not try to build it into modules.
 
-Always use the hacking/test-module script when developing modules and it will warn
-you about these kind of things.
+Always use the hacking/test-module script when developing modules and it will warn you about these kind of things.

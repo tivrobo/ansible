@@ -1,28 +1,17 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
-# (c) 2012, Red Hat, inc
+# Copyright: (c) 2012, Red Hat, inc
 # Written by Seth Vidal
 # based on the mount modules from salt and puppet
-#
-# This file is part of Ansible
-#
-# Ansible is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-#
-# Ansible is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with Ansible.  If not, see <http://www.gnu.org/licenses/>.
+# GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
-ANSIBLE_METADATA = {'status': ['preview'],
-                    'supported_by': 'core',
-                    'version': '1.0'}
+from __future__ import absolute_import, division, print_function
+__metaclass__ = type
+
+ANSIBLE_METADATA = {'metadata_version': '1.1',
+                    'status': ['preview'],
+                    'supported_by': 'core'}
 
 DOCUMENTATION = '''
 ---
@@ -38,32 +27,26 @@ options:
   path:
     description:
       - Path to the mount point (e.g. C(/mnt/files)).
-      - Before 2.3 this option was only usable as I(dest), I(destfile) and I(name).
+      - Before 2.3 this option was only usable as I(dest), I(destfile) and
+        I(name).
     required: true
     aliases: [ name ]
   src:
     description:
       - Device to be mounted on I(path). Required when I(state) set to
         C(present) or C(mounted).
-    required: false
-    default: null
   fstype:
     description:
       - Filesystem type. Required when I(state) is C(present) or C(mounted).
-    required: false
-    default: null
   opts:
     description:
       - Mount options (see fstab(5), or vfstab(4) on Solaris).
-    required: false
-    default: null
   dump:
     description:
       - Dump (see fstab(5)). Note that if set to C(null) and I(state) set to
         C(present), it will cease to work and duplicate entries will be made
         with subsequent runs.
       - Has no effect on Solaris systems.
-    required: false
     default: 0
   passno:
     description:
@@ -71,38 +54,47 @@ options:
         C(present), it will cease to work and duplicate entries will be made
         with subsequent runs.
       - Deprecated on Solaris systems.
-    required: false
     default: 0
   state:
     description:
-      - If C(mounted) or C(unmounted), the device will be actively mounted or
-        unmounted as needed and appropriately configured in I(fstab).
-      - C(absent) and C(present) only deal with I(fstab) but will not affect
-        current mounting.
-      - If specifying C(mounted) and the mount point is not present, the mount
+      - If C(mounted), the device will be actively mounted and appropriately
+        configured in I(fstab). If the mount point is not present, the mount
         point will be created.
-      - Similarly, specifying C(absent) will remove the mount point directory.
+      - If C(unmounted), the device will be unmounted without changing I(fstab).
+      - C(present) only specifies that the device is to be configured in
+        I(fstab) and does not trigger or require a mount.
+      - C(absent) specifies that the device mount's entry will be removed from
+        I(fstab) and will also unmount the device and remove the mount
+        point.
     required: true
-    choices: ["present", "absent", "mounted", "unmounted"]
+    choices: [ absent, mounted, present, unmounted ]
   fstab:
     description:
       - File to use instead of C(/etc/fstab). You shouldn't use this option
         unless you really know what you are doing. This might be useful if
         you need to configure mountpoints in a chroot environment.  OpenBSD
         does not allow specifying alternate fstab files with mount so do not
-        use this on OpenBSD with any state that operates on the live filesystem.
-    required: false
+        use this on OpenBSD with any state that operates on the live
+        filesystem.
     default: /etc/fstab (/etc/vfstab on Solaris)
   boot:
-    version_added: 2.2
     description:
       - Determines if the filesystem should be mounted on boot.
       - Only applies to Solaris systems.
+    type: bool
+    default: 'yes'
+    version_added: '2.2'
+  backup:
+    description:
+      - Create a backup file including the timestamp information so you can get
+        the original file back if you somehow clobbered it incorrectly.
     required: false
-    default: yes
-    choices: ["yes", "no"]
+    choices: [ "yes", "no" ]
+    default: "no"
+    version_added: '2.5'
 notes:
-  - As of Ansible 2.3, the I(name) option has been changed to I(path) as default, but I(name) still works as well.
+  - As of Ansible 2.3, the I(name) option has been changed to I(path) as
+    default, but I(name) still works as well.
 '''
 
 EXAMPLES = '''
@@ -112,7 +104,7 @@ EXAMPLES = '''
     path: /mnt/dvd
     src: /dev/sr0
     fstype: iso9660
-    opts: ro
+    opts: ro,noauto
     state: present
 
 - name: Mount up device by label
@@ -131,16 +123,19 @@ EXAMPLES = '''
     state: present
 '''
 
+
 import os
 
-# import module snippets
-from ansible.module_utils._text import to_native
 from ansible.module_utils.basic import AnsibleModule, get_platform
 from ansible.module_utils.ismount import ismount
-from ansible.module_utils.pycompat24 import get_exception
 from ansible.module_utils.six import iteritems
+from ansible.module_utils._text import to_native
 
-def write_fstab(lines, path):
+
+def write_fstab(module, lines, path):
+    if module.params['backup']:
+        module.backup_local(path)
+
     fs_w = open(path, 'w')
 
     for l in lines:
@@ -251,7 +246,7 @@ def set_mount(module, args):
         changed = True
 
     if changed and not module.check_mode:
-        write_fstab(to_write, args['fstab'])
+        write_fstab(module, to_write, args['fstab'])
 
     return (args['name'], changed)
 
@@ -313,19 +308,27 @@ def unset_mount(module, args):
         changed = True
 
     if changed and not module.check_mode:
-        write_fstab(to_write, args['fstab'])
+        write_fstab(module, to_write, args['fstab'])
 
     return (args['name'], changed)
 
+
 def _set_fstab_args(fstab_file):
     result = []
-    if fstab_file and fstab_file != '/etc/fstab':
+
+    if (
+            fstab_file and
+            fstab_file != '/etc/fstab' and
+            get_platform().lower() != 'sunos'):
         if get_platform().lower().endswith('bsd'):
             result.append('-F')
         else:
             result.append('-T')
+
         result.append(fstab_file)
+
     return result
+
 
 def mount(module, args):
     """Mount up a path or remount if needed."""
@@ -334,14 +337,14 @@ def mount(module, args):
     name = args['name']
     cmd = [mount_bin]
 
-    if ismount(name):
-        return remount(module, mount_bin, args)
-
     if get_platform().lower() == 'openbsd':
         # Use module.params['fstab'] here as args['fstab'] has been set to the
         # default value.
         if module.params['fstab'] is not None:
-            module.fail_json(msg='OpenBSD does not support alternate fstab files.  Do not specify the fstab parameter for OpenBSD hosts')
+            module.fail_json(
+                msg=(
+                    'OpenBSD does not support alternate fstab files. Do not '
+                    'specify the fstab parameter for OpenBSD hosts'))
     else:
         cmd += _set_fstab_args(args['fstab'])
 
@@ -352,7 +355,7 @@ def mount(module, args):
     if rc == 0:
         return 0, ''
     else:
-        return rc, out+err
+        return rc, out + err
 
 
 def umount(module, path):
@@ -366,28 +369,34 @@ def umount(module, path):
     if rc == 0:
         return 0, ''
     else:
-        return rc, out+err
+        return rc, out + err
 
-def remount(module, mount_bin, args):
-    ''' will try to use -o remount first and fallback to unmount/mount if unsupported'''
-    msg = ''
+
+def remount(module, args):
+    """Try to use 'remount' first and fallback to (u)mount if unsupported."""
+    mount_bin = module.get_bin_path('mount', required=True)
     cmd = [mount_bin]
 
-    # multiplatform remount opts
+    # Multiplatform remount opts
     if get_platform().lower().endswith('bsd'):
         cmd += ['-u']
     else:
-        cmd += ['-o', 'remount' ]
+        cmd += ['-o', 'remount']
 
     if get_platform().lower() == 'openbsd':
         # Use module.params['fstab'] here as args['fstab'] has been set to the
         # default value.
         if module.params['fstab'] is not None:
-            module.fail_json(msg='OpenBSD does not support alternate fstab files.  Do not specify the fstab parameter for OpenBSD hosts')
+            module.fail_json(
+                msg=(
+                    'OpenBSD does not support alternate fstab files. Do not '
+                    'specify the fstab parameter for OpenBSD hosts'))
     else:
         cmd += _set_fstab_args(args['fstab'])
-    cmd += [ args['name'], ]
+
+    cmd += [args['name']]
     out = err = ''
+
     try:
         if get_platform().lower().endswith('bsd'):
             # Note: Forcing BSDs to do umount/mount due to BSD remount not
@@ -401,13 +410,17 @@ def remount(module, mount_bin, args):
     except:
         rc = 1
 
+    msg = ''
+
     if rc != 0:
         msg = out + err
-        if ismount(args['name']):
-            rc, msg = umount(module, args['name'])
+        rc, msg = umount(module, args['name'])
+
         if rc == 0:
             rc, msg = mount(module, args)
+
     return rc, msg
+
 
 # Note if we wanted to put this into module_utils we'd have to get permission
 # from @jupeter -- https://github.com/ansible/ansible-modules-core/pull/2923
@@ -435,9 +448,9 @@ def is_bind_mounted(module, linux_mounts, dest, src=None, fstype=None):
             if dest in linux_mounts:
                 is_mounted = True
         else:
-            # That's for mounted
-            if dest in linux_mounts and linux_mounts[dest]['src'] == src:
-                is_mounted = True
+            if dest in linux_mounts:
+                is_mounted = linux_mounts[dest]['src'] == src
+
     else:
         bin_path = module.get_bin_path('mount', required=True)
         cmd = '%s -l' % bin_path
@@ -462,10 +475,8 @@ def is_bind_mounted(module, linux_mounts, dest, src=None, fstype=None):
     return is_mounted
 
 
-def get_linux_mounts(module):
+def get_linux_mounts(module, mntinfo_file="/proc/self/mountinfo"):
     """Gather mount information"""
-
-    mntinfo_file = "/proc/self/mountinfo"
 
     try:
         f = open(mntinfo_file)
@@ -479,103 +490,59 @@ def get_linux_mounts(module):
     except IOError:
         module.fail_json(msg="Cannot close file %s" % mntinfo_file)
 
-    mntinfo = []
+    mntinfo = {}
 
     for line in lines:
         fields = line.split()
 
         record = {
+            'id': int(fields[0]),
+            'parent_id': int(fields[1]),
             'root': fields[3],
             'dst': fields[4],
             'opts': fields[5],
-            'fields': fields[6:-4],
             'fs': fields[-3],
-            'src': fields[-2],
+            'src': fields[-2]
         }
 
-        mntinfo.append(record)
+        mntinfo[record['id']] = record
 
     mounts = {}
 
-    for i, mnt in enumerate(mntinfo):
-        src = mnt['src']
+    for mnt in mntinfo.values():
+        if mnt['parent_id'] != 1 and mnt['parent_id'] in mntinfo:
+            m = mntinfo[mnt['parent_id']]
+            if (
+                    len(m['root']) > 1 and
+                    mnt['root'].startswith("%s/" % m['root'])):
+                # Ommit the parent's root in the child's root
+                # == Example:
+                # 140 136 253:2 /rootfs / rw - ext4 /dev/sdb2 rw
+                # 141 140 253:2 /rootfs/tmp/aaa /tmp/bbb rw - ext4 /dev/sdb2 rw
+                # == Expected result:
+                # src=/tmp/aaa
+                mnt['root'] = mnt['root'][len(m['root']):]
 
-        if mnt['fs'] == 'tmpfs' and mnt['root'] != '/':
+            # Prepend the parent's dst to the child's root
             # == Example:
-            # 65 19 0:35 / /tmp rw shared:25 - tmpfs tmpfs rw
-            # 210 65 0:35 /aaa /tmp/bbb rw shared:25 - tmpfs tmpfs rw
+            # 42 60 0:35 / /tmp rw - tmpfs tmpfs rw
+            # 78 42 0:35 /aaa /tmp/bbb rw - tmpfs tmpfs rw
             # == Expected result:
             # src=/tmp/aaa
-            # ==
-
-            shared = None
-
-            # Search for the shared field
-            for fld in mnt['fields']:
-                if fld.startswith('shared'):
-                    shared = fld
-
-            if shared is None:
-                continue
-
-            dest = None
-
-            # Search fo the record with the same field
-            for j, m in enumerate(mntinfo):
-                if j < i:
-                    if shared in m['fields']:
-                        dest = m['dst']
-                else:
-                    break
-
-            if dest is not None:
-                src = "%s%s" % (dest, mnt['root'])
-            else:
-                continue
-
-        elif mnt['root'] != '/' and len(mnt['fields']) > 0:
-            # == Example:
-            # 67 19 8:18 / /mnt/disk2 rw shared:26 - ext4 /dev/sdb2 rw
-            # 217 65 8:18 /test /tmp/ccc rw shared:26 - ext4 /dev/sdb2 rw
-            # == Expected result:
-            # src=/mnt/disk2/test
-            # ==
-
-            # Search for parent
-            for j, m in enumerate(mntinfo):
-                if j < i:
-                    if m['src'] == mnt['src']:
-                        src = "%s%s" % (m['dst'], mnt['root'])
-                else:
-                    break
-
-        elif mnt['root'] != '/' and len(mnt['fields']) == 0:
-            # == Example 1:
-            # 27 20 8:1 /tmp/aaa /tmp/bbb rw - ext4 /dev/sdb2 rw
-            # == Example 2:
-            # 204 136 253:2 /rootfs / rw - ext4 /dev/sdb2 rw
-            # 141 140 253:2 /rootfs/tmp/aaa /tmp/bbb rw - ext4 /dev/sdb2 rw
-            # == Expected result:
-            # src=/tmp/aaa
-            # ==
-
+            if m['dst'] != '/':
+                mnt['root'] = "%s%s" % (m['dst'], mnt['root'])
             src = mnt['root']
+        else:
+            src = mnt['src']
 
-            # Search for parent
-            for j, m in enumerate(mntinfo):
-                if j < i:
-                    if (
-                            m['src'] == mnt['src'] and
-                            mnt['root'].startswith(m['root'])):
-                        src = src.replace("%s/" % m['root'], '/', 1)
-                else:
-                    break
-
-        mounts[mnt['dst']] = {
+        record = {
+            'dst': mnt['dst'],
             'src': src,
             'opts': mnt['opts'],
             'fs': mnt['fs']
         }
+
+        mounts[mnt['dst']] = record
 
     return mounts
 
@@ -583,26 +550,24 @@ def get_linux_mounts(module):
 def main():
     module = AnsibleModule(
         argument_spec=dict(
-            boot=dict(default='yes', choices=['yes', 'no']),
-            dump=dict(),
-            fstab=dict(default=None),
-            fstype=dict(),
-            path=dict(required=True, aliases=['name'], type='path'),
-            opts=dict(),
+            boot=dict(type='bool', default=True),
+            dump=dict(type='str'),
+            fstab=dict(type='str'),
+            fstype=dict(type='str'),
+            path=dict(type='path', required=True, aliases=['name']),
+            opts=dict(type='str'),
             passno=dict(type='str'),
             src=dict(type='path'),
-            state=dict(
-                required=True,
-                choices=['present', 'absent', 'mounted', 'unmounted']),
+            backup=dict(default=False, type='bool'),
+            state=dict(type='str', required=True, choices=['absent', 'mounted', 'present', 'unmounted']),
         ),
         supports_check_mode=True,
         required_if=(
             ['state', 'mounted', ['src', 'fstype']],
-            ['state', 'present', ['src', 'fstype']]
-        )
+            ['state', 'present', ['src', 'fstype']],
+        ),
     )
 
-    changed = False
     # solaris args:
     #   name, src, fstype, opts, boot, passno, state, fstab=/etc/vfstab
     # linux args:
@@ -637,7 +602,7 @@ def main():
     linux_mounts = []
 
     # Cache all mounts here in order we have consistent results if we need to
-    # call is_bind_mouted() multiple times
+    # call is_bind_mounted() multiple times
     if get_platform() == 'Linux':
         linux_mounts = get_linux_mounts(module)
 
@@ -671,6 +636,7 @@ def main():
 
     state = module.params['state']
     name = module.params['path']
+    changed = False
 
     if state == 'absent':
         name, changed = unset_mount(module, args)
@@ -686,9 +652,8 @@ def main():
             if os.path.exists(name):
                 try:
                     os.rmdir(name)
-                except (OSError, IOError):
-                    e = get_exception()
-                    module.fail_json(msg="Error rmdir %s: %s" % (name, str(e)))
+                except (OSError, IOError) as e:
+                    module.fail_json(msg="Error rmdir %s: %s" % (name, to_native(e)))
     elif state == 'unmounted':
         if ismount(name) or is_bind_mounted(module, linux_mounts, name):
             if not module.check_mode:
@@ -703,26 +668,20 @@ def main():
         if not os.path.exists(name) and not module.check_mode:
             try:
                 os.makedirs(name)
-            except (OSError, IOError):
-                e = get_exception()
+            except (OSError, IOError) as e:
                 module.fail_json(
-                    msg="Error making dir %s: %s" % (name, str(e)))
+                    msg="Error making dir %s: %s" % (name, to_native(e)))
 
         name, changed = set_mount(module, args)
         res = 0
 
-        if ismount(name):
+        if (
+                ismount(name) or
+                is_bind_mounted(
+                    module, linux_mounts, name, args['src'], args['fstype'])):
             if changed and not module.check_mode:
-                res, msg = mount(module, args)
+                res, msg = remount(module, args)
                 changed = True
-        elif 'bind' in args.get('opts', []):
-            changed = True
-
-            if is_bind_mounted( module, linux_mounts, name, args['src'], args['fstype']):
-                changed = False
-
-            if changed and not module.check_mode:
-                res, msg = mount(module, args)
         else:
             changed = True
 
@@ -737,6 +696,7 @@ def main():
         module.fail_json(msg='Unexpected position reached')
 
     module.exit_json(changed=changed, **args)
+
 
 if __name__ == '__main__':
     main()

@@ -1,30 +1,14 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
-# (c) 2017, Anatoliy Ivashina <tivrobo@gmail.com>
-#
-# This file is part of Ansible
-#
-# Ansible is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-#
-# Ansible is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with Ansible.  If not, see <http://www.gnu.org/licenses/>.
+# GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
-# this is a windows documentation stub.  actual code lives in the .ps1
-# file of the same name
+# Anatoliy Ivashina <tivrobo@gmail.com>
+# Pablo Estigarribia <pablodav@gmail.com>
+# Michael Hay <project.hay@gmail.com>
 
-# this is a windows documentation stub.  actual code lives in the .ps1
-# file of the same name
 
-DOCUMENTATION = '''
+DOCUMENTATION = r'''
 ---
 module: win_git
 version_added: "2.0"
@@ -36,10 +20,11 @@ notes:
     - git for Windows need to be installed
     - SSH only
 options:
-  name:
+  repo:
     description:
       - address of the repository
     required: true
+    aliases: [ name ]
   dest:
     description:
       - destination folder
@@ -47,26 +32,36 @@ options:
   replace_dest:
     description:
       - replace destination folder if exists (recursive!)
+    required: false
     default: false
   accept_hostkey:
     description:
       - add hostkey to known_hosts (before connecting to git)
+    required: false
     default: false
-author: Anatoliy Ivashina
+  update:
+    description:
+      - do we want to update the repo (use git pull origin branch)
+    required: false
+    default: false
+  branch:
+    description:
+      - branch to update the repo
+    required: false
+    default: master
+author: 
+- Anatoliy Ivashina
+- Pablo Estigarribia
+- Michael Hay
 '''
 
-EXAMPLES = '''
+EXAMPLES = r'''
   # git clone cool-thing.
   win_git:
-    name: "git@github.com:tivrobo/Ansible-win_git.git"
+    repo: "git@github.com:tivrobo/Ansible-win_git.git"
     dest: "{{ ansible_env.TEMP }}\\Ansible-win_git"
+    branch: master
+    update: no
     replace_dest: no
     accept_hostkey: yes
-
 '''
-
-ANSIBLE_METADATA = {
-    'version': '0.1',
-    'supported_by': 'unmaintained',
-    'status': ['preview']
-}
